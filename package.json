@@ -4,7 +4,7 @@
   "description": "Whatsapp api by Ngekoding",
   "main": "app.js",
   "scripts": {
-    "start": "node app.js",
+    "start": "nodemon app.js",
     "start:dev": "nodemon app.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -20,12 +20,13 @@
     "express": "^4.17.1",
     "express-fileupload": "^1.2.0",
     "express-validator": "^6.9.2",
+    "form-data": "^4.0.0",
     "http": "0.0.1-security",
     "mime-types": "^2.1.32",
     "openai": "^3.1.0",
     "qrcode": "^1.4.4",
     "socket.io": "2.3.0",
-    "whatsapp-web.js": "latest"
+    "whatsapp-web.js": "^1.19.2"
   },
   "devDependencies": {
     "nodemon": "^2.0.7"

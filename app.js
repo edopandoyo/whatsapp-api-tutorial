@@ -10,8 +10,9 @@ const fileUpload = require("express-fileupload");
 const axios = require("axios");
 const mime = require("mime-types");
 const dotenv = require("dotenv");
+var FormData = require("form-data");
 
-const port = process.env.PORT || 8000;
+const port = process.env.PORT || 8800;
 
 const app = express();
 const server = http.createServer(app);
@@ -75,6 +76,41 @@ const configuration = new Configuration({
 const openai = new OpenAIApi(configuration);
 
 client.on("message", async (msg) => {
+  if (msg.hasMedia && msg.body.includes("hapus")) {
+    const media = await msg.downloadMedia();
+    const fileName = Date.now() + ".jpg";
+    try {
+      fs.writeFile("./media/" + fileName, media.data, "base64", function (err) {
+        if (err) {
+          console.log(err);
+        }
+      });
+    } catch (error) {
+      console.log(error);
+    }
+
+    var data = new FormData();
+    data.append("image_file", fs.createReadStream("./media/" + fileName));
+
+    var config = {
+      method: "post",
+      url: "https://api.removal.ai/3.0/remove",
+      headers: {
+        "Rm-Token": process.env.REMOVE_AI_API_KEY,
+        ...data.getHeaders(),
+      },
+      data: data,
+    };
+    axios(config)
+      .then(async function (response) {
+        const media = await MessageMedia.fromUrl(response.data.url);
+        msg.reply(media);
+        fs.unlink("./media/" + fileName);
+      })
+      .catch(function (error) {
+        console.log(error);
+      });
+  }
   if (msg.body === ".vira" || msg.body === "vira" || msg.body === "vira ") {
     msg.reply(
       "Halo saya VIRA, Virtual Information Research Assistent\nsilahkan tanyakan apapun kepada saya dengan menambahkan kata .vira diawal pertanyaan anda\n\ncontoh:\n.vira apa nama ibukota indonesia?"
