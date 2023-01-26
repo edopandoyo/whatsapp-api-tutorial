@@ -15,7 +15,10 @@
   "author": "Nur Muhammad",
   "license": "MIT",
   "dependencies": {
+    "@google-cloud/speech": "^5.2.0",
     "@google-cloud/text-to-speech": "^4.1.0",
+    "@google-cloud/translate": "^7.0.5",
+    "audiobuffer-to-wav": "^1.0.0",
     "axios": "^0.20.0",
     "dotenv": "^16.0.3",
     "express": "^4.17.1",

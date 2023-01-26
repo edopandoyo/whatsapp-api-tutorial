@@ -4,8 +4,10 @@ const { body, validationResult } = require("express-validator");
 const socketIO = require("socket.io");
 const qrcode = require("qrcode");
 const http = require("http");
+
 const fs = require("fs");
 const util = require("util");
+
 const { phoneNumberFormatter } = require("./helpers/formatter");
 const fileUpload = require("express-fileupload");
 const axios = require("axios");
@@ -80,17 +82,31 @@ function toArabic(number) {
   return result;
 }
 
+// TEXT-TO-SPEECH
 const textToSpeech = require("@google-cloud/text-to-speech");
 
 const client_speech = new textToSpeech.TextToSpeechClient();
 
-async function convertTextToMp3(text, file_suara) {
+async function convertTextToMp3(text, file_suara, speech, voice, gender) {
+  let languageCode = "id-ID";
+  let voiceName = "id-ID-Wavenet-A";
+  let ssmlGender = "FEMALE";
+  if (speech) {
+    languageCode = speech;
+  }
+  if (voice) {
+    voiceName = voice;
+  }
+  if (gender) {
+    ssmlGender = gender;
+  }
+  console.log(ssmlGender);
   const req = {
     input: { text },
     voice: {
-      languageCode: "id-ID",
-      ssmlGender: "FEMALE",
-      voiceName: "id-ID-Standard-A",
+      languageCode,
+      ssmlGender,
+      voiceName,
     },
     audioConfig: { audioEncoding: "MP3" },
   };
@@ -104,6 +120,72 @@ async function convertTextToMp3(text, file_suara) {
   console.log("text to speech berhasil");
 }
 
+// SPEECH TO TEXT
+const speech = require("@google-cloud/speech");
+
+const clientStT = new speech.SpeechClient();
+
+async function speechToText(audio_url) {
+  // console.log(audio_url);
+  const file = fs.readFileSync("./test.flac");
+  const audioBytes = file.toString("base64");
+
+  // The audio file's encoding, sample rate in hertz, and BCP-47 language code
+  const audio = {
+    content: audioBytes,
+  };
+  const config = {
+    encoding: "FLAC",
+    sampleRateHertz: 24000,
+    languageCode: "id-ID",
+  };
+  const request = {
+    audio: audio,
+    config: config,
+  };
+
+  // Detects speech in the audio file
+  const [response] = await clientStT.recognize(request);
+  const transcription = response.results
+    .map((result) => result.alternatives[0].transcript)
+    .join("\n");
+  // console.log(`Transcription: ${transcription}`);
+  return transcription;
+}
+
+//GOOGLE TRANSLATE
+const { Translate } = require("@google-cloud/translate").v2;
+
+const projectId = "teak-amphora-364409";
+const translate = new Translate({ projectId });
+
+async function googleTranslate(text, target) {
+  const [translation] = await translate.translate(text, target);
+  return translation;
+}
+
+// QURAN
+async function quran(data) {
+  const response = await axios.get(
+    `https://api.npoint.io/99c279bb173a6e28359c/surat/${data.surat}/${
+      parseInt(data.ayat) - 1
+    }`
+  );
+  return response.data;
+}
+
+// HADITS
+async function hadits(data) {
+  const response = await axios.get(
+    `https://hadis-api-id.vercel.app/hadith/${data.perawi.replace(
+      " ",
+      ""
+    )}/${parseInt(data.no_hadits)}`
+  );
+  return response.data;
+}
+
+// OPEN AI
 const { Configuration, OpenAIApi } = require("openai");
 
 const configuration = new Configuration({
@@ -146,6 +228,124 @@ client.on("message", async (msg) => {
       .catch(function (error) {
         console.log(error);
       });
+  } else if (msg.body.includes(".hadits")) {
+    const pesan = msg.body.split(":");
+    const data = pesan[1].split("/");
+    if (!pesan[1] && !data[0] && !data[1]) {
+      return msg.reply(
+        "pastikan perintah yang anda tulis sudah benar\n\ncontoh :\n.hadits : bukhari/1\n\nketerangan:\nbukhari = Nama Perawi\n1 = nomor hadits\n\npastikan nama perawi sesuai dengan kode perawi dibawah ini:\n\nDaftar Kode Perawi : \n1.abu-dawud\n2.ahmad\n3.bukhari\n4.darimi\n5.ibnu-majah\n6.malik\n7.muslim\n8.nasai\n9.tirmidzi"
+      );
+    }
+    hadits({ perawi: String(data[0]).toLowerCase(), no_hadits: data[1] })
+      .then((data) => {
+        const pesan = `Perawi: ${data.name}\nHadits No : ${data.number}\n\n${data.arab}\n\n${data.id}`;
+        msg.reply(pesan);
+        const file_suara = Date.now() + ".mp3";
+        convertTextToMp3(
+          data.arab,
+          file_suara,
+          "ar-EG",
+          "ar-XA-Wavenet-C",
+          "MALE"
+        ).then(() => {
+          try {
+            const media = MessageMedia.fromFilePath(file_suara);
+            client.sendMessage(msg.from, media);
+            if (fs.existsSync(file_suara)) {
+              fs.unlinkSync(file_suara);
+            }
+          } catch (error) {
+            console.log(error);
+          }
+        });
+      })
+      .catch((err) => {
+        console.log(err);
+        msg.reply(
+          "kami tidak dapat menemukan nama perawi atau nomor hadits yang anda cari\n\npastikan perintah yang anda tulis sudah benar\n\ncontoh :\n.hadits : bukhari/1\n\nketerangan:\nbukhari = Nama Perawi\n1 = nomor hadits\n\npastikan nama perawi sesuai dengan kode perawi dibawah ini:\n\nDaftar Kode Perawi : \n1.abu-dawud\n2.ahmad\n3.bukhari\n4.darimi\n5.ibnu-majah\n6.malik\n7.muslim\n8.nasai\n9.tirmidzi"
+        );
+      });
+  } else if (msg.body.includes(".quran")) {
+    const pesan = msg.body.split(":");
+    const data = pesan[1].split("/");
+    if (!pesan[1] && !data[0] && !data[1]) {
+      return msg.reply(
+        "pastikan perintah yang anda tulis sudah benar\n\ncontoh :\n.quran : 1/3\n\nketerangan:\n1 = nomor surat\n3 = nomor ayat"
+      );
+    }
+    quran({ surat: data[0], ayat: data[1] })
+      .then((data) => {
+        const pesan = `${data.ar}\n\nartinya : _${data.id}_ (${data.nomor})`;
+        msg.reply(pesan);
+      })
+      .catch((err) => {
+        console.log(err);
+        msg.reply(
+          "kami tidak dapat menemukan nomor surat atau nomor ayat yang anda cari\n\npastikan perintah yang anda tulis sudah benar\n\ncontoh :\n.quran : 1/3\n\nketerangan:\n1 = nomor surat\n3 = nomor ayat"
+        );
+      });
+  } else if (msg.body.includes(".translate")) {
+    const pesan = msg.body.split(":");
+    const target = pesan[0].split(" ");
+    if (!target[1]) {
+      return msg.reply(
+        "Untuk saat ini hanya dapat menterjemahkan ke bahasa Arab, Inggris, Korea, Indonesia\n\npastikan perintah yang kamu buat sudah benar seperti contoh berikut :\n\n.translate arab : semoga hari ini berjalan lancar"
+      );
+    }
+    let lang = "";
+    let speech = "";
+    let voice = "";
+    let gender = "";
+    switch (target[1].toLowerCase()) {
+      case "arab":
+        lang = "ar";
+        speech = "ar-EG";
+        voice = "ar-XA-Wavenet-C";
+        gender = "MALE";
+        break;
+      case "inggris":
+        lang = "en";
+        speech = "en-US";
+        voice = "en-US-Neural2-H";
+        gender = "FEMALE";
+        break;
+      case "korea":
+        lang = "ko";
+        speech = "ko-KR";
+        voice = "ko-KR-Wavenet-A";
+        gender = "FEMALE";
+        break;
+      case "indonesia":
+        lang = "id";
+        speech = "id-ID";
+        break;
+      default:
+        lang = "";
+        break;
+    }
+    if (!lang) {
+      return msg.reply(
+        "Untuk saat ini hanya dapat menterjemahkan ke bahasa Arab, Inggris, Korea, Indonesia\n\npastikan perintah yang kamu buat sudah benar seperti contoh berikut :\n\n.translate arab : semoga hari ini berjalan lancar"
+      );
+    }
+    googleTranslate(pesan[1], lang).then((data) => {
+      console.log("translate berhasil");
+      msg.reply(data);
+      if (speech) {
+        const file_suara = Date.now() + ".mp3";
+        convertTextToMp3(data, file_suara, speech, voice, gender).then(() => {
+          try {
+            const media = MessageMedia.fromFilePath(file_suara);
+            client.sendMessage(msg.from, media);
+            if (fs.existsSync(file_suara)) {
+              fs.unlinkSync(file_suara);
+            }
+          } catch (error) {
+            console.log(error);
+          }
+        });
+      }
+    });
   }
   if (msg.body === ".vira" || msg.body === "vira" || msg.body === "vira ") {
     const file_suara = Date.now() + ".mp3";
@@ -162,7 +362,7 @@ client.on("message", async (msg) => {
         console.log(error);
       }
     });
-  } else if (msg.body.includes(".vira" && "tanggal" && "hijriah")) {
+  } else if (msg.body.includes(".hijriah")) {
     await axios
       .get(
         "https://api.aladhan.com/v1/gToH?date=" +
@@ -181,30 +381,40 @@ client.on("message", async (msg) => {
         );
       });
   } else if (findVira(msg.body) == true) {
-    const response = await openai.createCompletion({
-      model: "text-davinci-003",
-      prompt: msg.body.replace(/.vira/gi, ""),
-      temperature: 0.7,
-      max_tokens: 1000,
-      top_p: 1,
-      frequency_penalty: 0,
-      presence_penalty: 0,
-    });
-    const file_suara = Date.now() + ".mp3";
-    if (String(response.data.choices[0].text).length < 200) {
-      convertTextToMp3(response.data.choices[0].text, file_suara).then(() => {
-        try {
-          const media = MessageMedia.fromFilePath(file_suara);
-          client.sendMessage(msg.from, media);
-          if (fs.existsSync(file_suara)) {
-            fs.unlinkSync(file_suara);
+    try {
+      const response = await openai.createCompletion({
+        model: "text-davinci-003",
+        prompt: msg.body.replace(/.vira/gi, ""),
+        temperature: 0.7,
+        max_tokens: 1000,
+        top_p: 1,
+        frequency_penalty: 0,
+        presence_penalty: 0,
+      });
+      const file_suara = Date.now() + ".mp3";
+      if (String(response.data.choices[0].text).length < 500) {
+        convertTextToMp3(response.data.choices[0].text, file_suara).then(() => {
+          try {
+            const media = MessageMedia.fromFilePath(file_suara);
+            client.sendMessage(msg.from, media);
+            if (fs.existsSync(file_suara)) {
+              fs.unlinkSync(file_suara);
+            }
+          } catch (error) {
+            console.log(error);
           }
+        });
+      } else {
+        try {
+          msg.reply(response.data.choices[0].text);
         } catch (error) {
           console.log(error);
         }
-      });
-    } else {
-      msg.reply(response.data.choices[0].text);
+      }
+    } catch (error) {
+      msg.reply(
+        "maaf, .vira untuk saat ini tidak tersedia. silahkan coba beberapa saat lagi"
+      );
     }
   }
   if (msg.body == "!ping") {
@@ -229,7 +439,7 @@ client.on("message", async (msg) => {
     });
   }
 });
-
+0;
 client.initialize();
 
 // Socket IO
@@ -368,8 +578,9 @@ app.post(
   [
     body("id").custom((value, { req }) => {
       if (!value && !req.body.name) {
-        throw new Error("Invalid value, you can use `id` or `name`");
       }
+      throw new Error("Invalid value, you can use `id` or `name`");
+
       return true;
     }),
     body("message").notEmpty(),
