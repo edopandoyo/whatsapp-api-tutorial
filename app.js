@@ -100,7 +100,6 @@ async function convertTextToMp3(text, file_suara, speech, voice, gender) {
   if (gender) {
     ssmlGender = gender;
   }
-  console.log(ssmlGender);
   const req = {
     input: { text },
     voice: {
