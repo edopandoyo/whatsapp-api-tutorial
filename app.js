@@ -5,12 +5,15 @@ const socketIO = require("socket.io");
 const qrcode = require("qrcode");
 const http = require("http");
 const fs = require("fs");
+const util = require("util");
 const { phoneNumberFormatter } = require("./helpers/formatter");
 const fileUpload = require("express-fileupload");
 const axios = require("axios");
 const mime = require("mime-types");
 const dotenv = require("dotenv");
 var FormData = require("form-data");
+
+const moment = require("moment-timezone");
 
 const port = process.env.PORT || 8800;
 
@@ -68,6 +71,39 @@ function findVira(str) {
   return str.includes(".vira");
 }
 
+function toArabic(number) {
+  const arabicNumerals = ["٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"];
+  let result = "";
+  for (let char of number.toString()) {
+    result += arabicNumerals[char];
+  }
+  return result;
+}
+
+const textToSpeech = require("@google-cloud/text-to-speech");
+
+const client_speech = new textToSpeech.TextToSpeechClient();
+
+async function convertTextToMp3(text, file_suara) {
+  const req = {
+    input: { text },
+    voice: {
+      languageCode: "id-ID",
+      ssmlGender: "FEMALE",
+      voiceName: "id-ID-Standard-A",
+    },
+    audioConfig: { audioEncoding: "MP3" },
+  };
+
+  const [response] = await client_speech.synthesizeSpeech(req);
+
+  const writeFile = util.promisify(fs.writeFile);
+
+  await writeFile(file_suara, response.audioContent, "binary");
+
+  console.log("text to speech berhasil");
+}
+
 const { Configuration, OpenAIApi } = require("openai");
 
 const configuration = new Configuration({
@@ -112,9 +148,38 @@ client.on("message", async (msg) => {
       });
   }
   if (msg.body === ".vira" || msg.body === "vira" || msg.body === "vira ") {
-    msg.reply(
-      "Halo saya VIRA, Virtual Information Research Assistent\nsilahkan tanyakan apapun kepada saya dengan menambahkan kata .vira diawal pertanyaan anda\n\ncontoh:\n.vira apa nama ibukota indonesia?"
-    );
+    const file_suara = Date.now() + ".mp3";
+    const pesan =
+      "Halo saya VIRA, Virtual Information Research Assistent.\nsilahkan tanyakan apapun kepada saya dengan menambahkan kata titik vira diawal pertanyaan anda.\n\ncontoh:\n.vira apa nama ibukota indonesia?";
+    convertTextToMp3(pesan, file_suara).then(() => {
+      try {
+        const media = MessageMedia.fromFilePath(file_suara);
+        client.sendMessage(msg.from, media);
+        if (fs.existsSync(file_suara)) {
+          fs.unlinkSync(file_suara);
+        }
+      } catch (error) {
+        console.log(error);
+      }
+    });
+  } else if (msg.body.includes(".vira" && "tanggal" && "hijriah")) {
+    await axios
+      .get(
+        "https://api.aladhan.com/v1/gToH?date=" +
+          moment(new Date()).format("DD-MM-YYYY")
+      )
+      .then((res) => {
+        console.log(res.data.data);
+        msg.reply(
+          `hari ini ${res.data.data.hijri.day} ${
+            res.data.data.hijri.month.en
+          } ${res.data.data.hijri.year} H  \n ${
+            res.data.data.hijri.weekday.ar
+          }, ${toArabic(res.data.data.hijri.day)} ${
+            res.data.data.hijri.month.ar
+          } ${toArabic(res.data.data.hijri.year)} ه`
+        );
+      });
   } else if (findVira(msg.body) == true) {
     const response = await openai.createCompletion({
       model: "text-davinci-003",
@@ -125,8 +190,22 @@ client.on("message", async (msg) => {
       frequency_penalty: 0,
       presence_penalty: 0,
     });
-    console.log(response.data.choices[0].text);
-    msg.reply(response.data.choices[0].text);
+    const file_suara = Date.now() + ".mp3";
+    if (String(response.data.choices[0].text).length < 200) {
+      convertTextToMp3(response.data.choices[0].text, file_suara).then(() => {
+        try {
+          const media = MessageMedia.fromFilePath(file_suara);
+          client.sendMessage(msg.from, media);
+          if (fs.existsSync(file_suara)) {
+            fs.unlinkSync(file_suara);
+          }
+        } catch (error) {
+          console.log(error);
+        }
+      });
+    } else {
+      msg.reply(response.data.choices[0].text);
+    }
   }
   if (msg.body == "!ping") {
     msg.reply("pong");

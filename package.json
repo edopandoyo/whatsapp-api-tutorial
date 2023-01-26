@@ -15,6 +15,7 @@
   "author": "Nur Muhammad",
   "license": "MIT",
   "dependencies": {
+    "@google-cloud/text-to-speech": "^4.1.0",
     "axios": "^0.20.0",
     "dotenv": "^16.0.3",
     "express": "^4.17.1",
@@ -23,6 +24,7 @@
     "form-data": "^4.0.0",
     "http": "0.0.1-security",
     "mime-types": "^2.1.32",
+    "moment-timezone": "^0.5.40",
     "openai": "^3.1.0",
     "qrcode": "^1.4.4",
     "socket.io": "2.3.0",
