@@ -250,7 +250,7 @@ client.on("message", async (msg) => {
         convertTextToMp3(
           data.arab,
           file_suara,
-          "ar-EG",
+          "ar-XA",
           "ar-XA-Wavenet-C",
           "MALE"
         ).then(() => {
@@ -305,7 +305,7 @@ client.on("message", async (msg) => {
     switch (target[1].toLowerCase()) {
       case "arab":
         lang = "ar";
-        speech = "ar-EG";
+        speech = "ar-XA";
         voice = "ar-XA-Wavenet-C";
         gender = "MALE";
         break;
