@@ -218,15 +218,22 @@ client.on("message", async (msg) => {
       },
       data: data,
     };
-    axios(config)
-      .then(async function (response) {
-        const media = await MessageMedia.fromUrl(response.data.url);
-        msg.reply(media);
-        fs.unlink("./media/" + fileName);
-      })
-      .catch(function (error) {
-        console.log(error);
-      });
+    try {
+      axios(config)
+        .then(async function (response) {
+          const media = await MessageMedia.fromUrl(response.data.url);
+          msg.reply(media);
+          fs.unlink("./media/" + fileName);
+        })
+        .catch(function (error) {
+          console.log(error);
+        });
+    } catch (error) {
+      console.log(error);
+      msg.reply(
+        "maaf, untuk saat ini fitur hapus background tidak tersedia. silahkan coba beberapa saat lagi"
+      );
+    }
   } else if (msg.body.includes(".hadits")) {
     const pesan = msg.body.split(":");
     const data = pesan[1].split("/");
