@@ -90,7 +90,7 @@ const client_speech = new textToSpeech.TextToSpeechClient();
 async function convertTextToMp3(text, file_suara, speech, voice, gender) {
   let languageCode = "id-ID";
   let voiceName = "id-ID-Wavenet-A";
-  let ssmlGender = "FEMALE";
+  let ssmlGender = "MALE";
   if (speech) {
     languageCode = speech;
   }
@@ -192,7 +192,33 @@ const configuration = new Configuration({
 });
 const openai = new OpenAIApi(configuration);
 
+async function dallE(prompt) {
+  console.log(prompt);
+  response = await openai.createImage({ prompt, n: 1, size: "1024x1024" });
+  return response.data.data[0].url;
+}
+
 client.on("message", async (msg) => {
+  if (msg.body.includes(".dall-e")) {
+    const pesan = msg.body.split(":");
+    const chat = pesan[1];
+    try {
+      dallE(chat)
+        .then(async (data) => {
+          const media = await MessageMedia.fromUrl(data);
+          return msg.reply(media);
+        })
+        .catch((err) => {
+          return msg.reply(
+            "maaf, saat ini request tidak dapat di response. silahkan coba beberapa saat lagi"
+          );
+        });
+    } catch (error) {
+      return msg.reply(
+        "maaf, saat ini request tidak dapat di response. silahkan coba beberapa saat lagi"
+      );
+    }
+  }
   if (msg.hasMedia && msg.body.includes("hapus")) {
     const media = await msg.downloadMedia();
     const fileName = Date.now() + ".jpg";
@@ -226,7 +252,10 @@ client.on("message", async (msg) => {
           fs.unlink("./media/" + fileName);
         })
         .catch(function (error) {
-          console.log(error);
+          console.log(error.data);
+          msg.reply(
+            "maaf, untuk saat ini fitur hapus background tidak tersedia. silahkan coba beberapa saat lagi"
+          );
         });
     } catch (error) {
       console.log(error);
