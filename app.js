@@ -198,7 +198,60 @@ async function dallE(prompt) {
   return response.data.data[0].url;
 }
 
+// GOOGLE VISION
+async function ocrVision(file) {
+  // Imports the Google Cloud client library
+  const vision = require("@google-cloud/vision");
+
+  // Creates a client
+  const client = new vision.ImageAnnotatorClient();
+
+  // Performs label detection on the image file
+  const [result] = await client.textDetection(file);
+  const detections = result.textAnnotations;
+  return detections[0].description;
+}
+
 client.on("message", async (msg) => {
+  if (msg.hasMedia && msg.body.includes(".soal")) {
+    const media = await msg.downloadMedia();
+    const fileName = Date.now() + ".jpg";
+    try {
+      fs.writeFile("./media/" + fileName, media.data, "base64", function (err) {
+        if (err) {
+          console.log(err);
+        }
+        ocrVision("./media/" + fileName)
+          .then(async (res) => {
+            const response = await openai.createCompletion({
+              model: "text-davinci-003",
+              prompt: res,
+              temperature: 0.7,
+              max_tokens: 1000,
+              top_p: 1,
+              frequency_penalty: 0,
+              presence_penalty: 0,
+            });
+            try {
+              const jawaban =
+                "soal: " + res + "\n" + response.data.choices[0].text;
+              msg.reply(jawaban);
+            } catch (error) {
+              console.log(error);
+              msg.reply("terjadi kesalahan saat mencari jawaban pada openai");
+            }
+          })
+          .catch((err) => {
+            console.log(err);
+            msg.reply(
+              "terjadi kesalahan saat mengubah text pada gambar menjadi text"
+            );
+          });
+      });
+    } catch (error) {
+      console.log(error);
+    }
+  }
   if (msg.body.includes(".dall-e")) {
     const pesan = msg.body.split(":");
     const chat = pesan[1];
